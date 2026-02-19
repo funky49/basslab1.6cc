@@ -13,9 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let uiUpdateRAF = null;
 
     let isFirstAction = true;
-    let hasSweptOnce = false;
     let currentMode = 'generator';
-    let genSubMode = 'tone'; 
+    let genSubMode = ''; // Starts empty, set on action
     let toneHz = 49;
     let isDraggingKnob = false;
 
@@ -26,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const waveCanvas = document.getElementById('waveCanvas');
     const toneArrow = document.getElementById('toneArrow');
 
-    // Safe Context handling for iOS Safari
+    // Safe Context handling
     function getSafeContext() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -41,25 +40,25 @@ document.addEventListener('DOMContentLoaded', () => {
         headerOverlay.style.display = 'none';
         headerWrapper.style.display = 'flex';
         toneArrow.style.display = 'none';
-        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6d");
+        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6e");
     }
 
     // --- GLOBAL STOP ---
     window.stopAll = function() {
         handleFirstAction();
         
+        // Disconnect and stop oscillators/nodes
         if (activeOsc) { try { activeOsc.stop(); activeOsc.disconnect(); } catch(e){} activeOsc = null; }
         if (lfoOsc) { try { lfoOsc.stop(); lfoOsc.disconnect(); } catch(e){} lfoOsc = null; }
         if (activeGain) { try { activeGain.disconnect(); } catch(e){} activeGain = null; }
         
+        // Clear timing and RAF
         melodyTimeouts.forEach(t => clearTimeout(t));
         melodyTimeouts = [];
+        if (uiUpdateRAF) { cancelAnimationFrame(uiUpdateRAF); uiUpdateRAF = null; }
+        if (vizRAF) { cancelAnimationFrame(vizRAF); vizRAF = null; }
         
-        if (uiUpdateRAF) cancelAnimationFrame(uiUpdateRAF);
-        uiUpdateRAF = null;
-
-        if (vizRAF) cancelAnimationFrame(vizRAF);
-        vizRAF = null;
+        // Clear visuals
         const c = waveCanvas.getContext('2d');
         c.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
 
@@ -68,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.song-btn.playing').forEach(b => b.classList.remove('playing'));
         document.body.classList.remove('active-audio');
         
-        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6d");
+        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6e");
     };
 
     // --- VISUALIZER ---
@@ -83,6 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startViz() {
         if (vizRAF) cancelAnimationFrame(vizRAF);
+        if (!analyser) return;
+        
         const ctx = waveCanvas.getContext('2d');
         const bufferLen = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLen);
@@ -98,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             analyser.getByteTimeDomainData(dataArray);
             
             ctx.clearRect(0, 0, rect.width, rect.height);
-            ctx.lineWidth = 4; // Thicker for visibility
+            ctx.lineWidth = 4;
             ctx.strokeStyle = '#ff3b30'; 
             ctx.beginPath();
             
@@ -142,18 +143,15 @@ document.addEventListener('DOMContentLoaded', () => {
         activeOsc = ctx.createOscillator();
         activeGain = ctx.createGain();
         analyser = ctx.createAnalyser();
-        
         lfoOsc = ctx.createOscillator();
         const lfoGain = ctx.createGain();
 
         activeOsc.frequency.value = center;
-        
         lfoOsc.type = 'triangle';
         lfoOsc.frequency.value = 1 / duration; 
         lfoGain.gain.value = span; 
         
         lfoOsc.connect(lfoGain).connect(activeOsc.frequency);
-        
         activeGain.gain.setValueAtTime(0.3, ctx.currentTime);
         activeOsc.connect(activeGain).connect(analyser).connect(ctx.destination);
         
@@ -204,8 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     updateHeaderUI(freq, `${note.n} — ${freq.toFixed(1)}Hz`);
                     if(!vizRAF) startViz();
-                } else {
-                     if(activeOsc) { try{activeOsc.stop();}catch(e){} activeOsc=null; }
                 }
                 
                 await new Promise(r => {
@@ -218,7 +214,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loopSong();
     };
 
-    window.playToySweep = (start, end) => {
+    // Toy Mode Bass Drop/Rise Macros
+    window.playSweep = (start, end) => {
         stopAll();
         const ctx = getSafeContext();
         analyser = ctx.createAnalyser();
@@ -244,10 +241,10 @@ document.addEventListener('DOMContentLoaded', () => {
         function animateRampUI() {
             if(!activeOsc) return;
             let elapsed = Date.now() - startTime;
-            if(elapsed > duration) return;
+            if(elapsed > duration) { updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6e"); return; }
             let pct = elapsed / duration;
             let currentF = start + (end - start) * pct;
-            updateHeaderUI(currentF, start < end ? "Bass Rise" : "Bass Drop");
+            updateHeaderUI(currentF, start < end ? `Bass Rise — ${currentF.toFixed(0)}Hz` : `Bass Drop — ${currentF.toFixed(0)}Hz`);
             uiUpdateRAF = requestAnimationFrame(animateRampUI);
         }
         animateRampUI();
@@ -261,19 +258,25 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById(`view-${mode}`).classList.add('active');
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-btn')[['generator','song','toy'].indexOf(mode)].classList.add('active');
-        if(mode === 'generator' && genSubMode === 'tone') toneArrow.style.display = isFirstAction ? 'block' : 'none';
+        
+        // Ensure Tone view resets completely on mode switch
+        if(mode === 'generator' && !genSubMode) {
+            toneArrow.style.display = isFirstAction ? 'block' : 'none';
+        }
     };
 
     window.setGenSubMode = (sub) => {
-        stopAll();
+        stopAll(); // Trigger global stop
         genSubMode = sub;
         document.querySelectorAll('.gen-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(`btn-${sub}`).classList.add('active');
         document.querySelectorAll('.sub-ui').forEach(u => u.classList.remove('active'));
         document.getElementById(`ui-${sub}`).classList.add('active');
+        toneArrow.style.display = 'none'; // Clear arrow if active
 
-        if (sub === 'tone' && !isFirstAction) startTone(toneHz); 
-        toneArrow.style.display = 'none'; // Hide arrow once a submode is clicked
+        if (sub === 'tone') {
+            startTone(toneHz); 
+        }
     };
 
     // --- TONE KNOB LOGIC ---
@@ -298,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const startDrag = (y) => { 
         handleFirstAction();
         isDraggingKnob = true; startY = y; initialHz = toneHz; 
-        if(genSubMode === 'tone') startTone(toneHz); 
+        if(genSubMode !== 'tone') setGenSubMode('tone');
     };
     const moveDrag = (y) => { if (!isDraggingKnob) return; const delta = startY - y; updateKnobUI(initialHz + (delta * 0.5)); };
     const endDrag = () => { isDraggingKnob = false; };
@@ -311,8 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientY); }, {passive: false});
     document.addEventListener('touchend', endDrag);
 
-    document.getElementById('nudgeUp').onclick = () => { handleFirstAction(); updateKnobUI(toneHz + 1); if(!activeOsc && genSubMode==='tone') startTone(toneHz);};
-    document.getElementById('nudgeDown').onclick = () => { handleFirstAction(); updateKnobUI(toneHz - 1); if(!activeOsc && genSubMode==='tone') startTone(toneHz);};
+    document.getElementById('nudgeUp').onclick = () => { handleFirstAction(); updateKnobUI(toneHz + 1); if(genSubMode!=='tone') setGenSubMode('tone'); };
+    document.getElementById('nudgeDown').onclick = () => { handleFirstAction(); updateKnobUI(toneHz - 1); if(genSubMode!=='tone') setGenSubMode('tone'); };
 
     // --- SWEEP LOGIC ---
     const swpCenter = document.getElementById('swpCenter');
@@ -327,39 +330,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const triggerSweep = () => {
         handleFirstAction();
-        hasSweptOnce = true;
         startSweep(parseFloat(swpCenter.value), parseFloat(swpSpan.value), parseFloat(swpTime.value));
     };
 
     [swpCenter, swpSpan, swpTime].forEach(el => {
         el.addEventListener('input', updateSweepLabels);
-        el.addEventListener('change', () => {
-            // Only auto-start on change if they've grabbed it at least once.
-            if (!hasSweptOnce && el === swpCenter) triggerSweep(); 
-            else if (hasSweptOnce) triggerSweep();
-        });
     });
+    
+    // Auto-trigger on change of the Median slider as requested
+    swpCenter.addEventListener('change', triggerSweep);
 
     // --- KEYBOARD BUILDER ---
     function buildKeys() {
         const wrap = document.getElementById('pianoWrapper');
-        // 18 Keys centered on D#1 (38.89Hz). Range: G0 to C2
+        // A0 to A1 (13 keys)
         const keys = [
-            {n:'G0', f:24.50, t:'w'}, {n:'G#0', f:25.96, t:'b'}, 
             {n:'A0', f:27.50, t:'w'}, {n:'A#0', f:29.14, t:'b'}, {n:'B0', f:30.87, t:'w'},
-            {n:'C1', f:32.70, t:'w'}, {n:'C#1', f:34.65, t:'b'}, 
-            {n:'D1', f:36.71, t:'w'}, {n:'D#1', f:38.89, t:'b'}, {n:'E1', f:41.20, t:'w'},
-            {n:'F1', f:43.65, t:'w'}, {n:'F#1', f:46.25, t:'b'}, 
-            {n:'G1', f:49.00, t:'w'}, {n:'G#1', f:51.91, t:'b'}, {n:'A1', f:55.00, t:'w'}, {n:'A#1', f:58.27, t:'b'}, {n:'B1', f:61.74, t:'w'},
-            {n:'C2', f:65.41, t:'w'}
+            {n:'C1', f:32.70, t:'w'}, {n:'C#1', f:34.65, t:'b'}, {n:'D1', f:36.71, t:'w'},
+            {n:'D#1', f:38.89, t:'b'}, {n:'E1', f:41.20, t:'w'}, {n:'F1', f:43.65, t:'w'},
+            {n:'F#1', f:46.25, t:'b'}, {n:'G1', f:49.00, t:'w'}, {n:'G#1', f:51.91, t:'b'},
+            {n:'A1', f:55.00, t:'w'}
         ];
 
         let wCount = 0;
         keys.forEach(k => {
             const el = document.createElement('div');
             el.className = `key key-${k.t === 'w' ? 'white' : 'black'}`;
-            if (k.t === 'w') { el.style.left = `${wCount * 9.09}%`; wCount++; } 
-            else { el.style.left = `${(wCount-1) * 9.09 + 6}%`; }
+            if (k.t === 'w') { 
+                el.style.left = `${wCount * 12.5}%`; 
+                wCount++; 
+            } else { 
+                el.style.left = `${(wCount) * 12.5}%`; 
+            }
 
             const play = (e) => { e.preventDefault(); el.classList.add('active'); playKey(k.f, k.n); };
             const stop = (e) => { e.preventDefault(); el.classList.remove('active'); stopAll(); };
