@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Oobleck Dance Station</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header id="masterHeader" onclick="stopAll()">
+        <canvas id="waveCanvas"></canvas>
+        
+        <div class="header-text-container" id="headerTextWrapper" style="display: none;">
+            <span id="headerBase" class="header-layer base">Oobleck Dance Generator</span>
+            <span id="headerFill" class="header-layer fill">Oobleck Dance Generator</span>
+        </div>
+
+        <div id="initialHeaderOverlay" class="header-initial-overlay">
+            <div class="init-left">&larr; 25hz</div>
+            <div class="init-center">WARNING<br><small>(not gentle to speakers)</small></div>
+            <div class="init-right">75hz &rarr;</div>
+        </div>
+    </header>
+
+    <nav class="main-tabs">
+        <button class="tab-btn active" onclick="setMode('generator')">Generator Mode</button>
+        <button class="tab-btn" onclick="setMode('song')">Song Mode</button>
+        <button class="tab-btn" onclick="setMode('toy')">Toy Mode</button>
+    </nav>
+
+    <main id="appContainer">
+        
+        <div id="view-generator" class="view-section active">
+            
+            <div class="gen-menu-wrapper">
+                <div class="gen-menu">
+                    <button id="btn-tone" class="gen-btn" onclick="setGenSubMode('tone')">TONE</button>
+                    <button id="btn-sweep" class="gen-btn" onclick="setGenSubMode('sweep')">SWEEP</button>
+                    <button id="btn-keys" class="gen-btn" onclick="setGenSubMode('keys')">KEYBOARD</button>
+                    <button class="gen-btn off" onclick="stopAll()">OFF</button>
+                </div>
+                <div id="toneArrow" class="tone-arrow">
+                    &uarr;<br>Press here!
+                </div>
+            </div>
+
+            <div class="gen-content">
+                
+                <div id="ui-tone" class="sub-ui">
+                    <div class="knob-row">
+                        <button class="nudge-btn" id="nudgeDown">−</button>
+                        <div class="knob-container" id="hzKnob">
+                            <div class="knob-marker"></div>
+                            <div class="knob-readout"><span id="toneVal">49</span><small>Hz</small></div>
+                        </div>
+                        <button class="nudge-btn" id="nudgeUp">+</button>
+                    </div>
+                </div>
+
+                <div id="ui-sweep" class="sub-ui">
+                    <div class="slider-group">
+                        <label>Center: <span id="swpCenterVal">49</span> Hz</label>
+                        <input type="range" id="swpCenter" min="35" max="65" value="49" class="slider-heavy">
+                    </div>
+                    <div class="slider-group">
+                        <label>Span: &plusmn;<span id="swpSpanVal">5</span> Hz</label>
+                        <input type="range" id="swpSpan" min="3" max="10" step="0.5" value="5" class="slider-mid">
+                    </div>
+                    <div class="slider-group">
+                        <label>Duration: <span id="swpTimeVal">7</span> sec</label>
+                        <input type="range" id="swpTime" min="5" max="10" step="0.5" value="7" class="slider-thin">
+                    </div>
+                    <div class="instruction">Release a slider to start sweep</div>
+                </div>
+
+                <div id="ui-keys" class="sub-ui">
+                    <div id="pianoWrapper">
+                        </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="view-song" class="view-section">
+            <div id="songGrid" class="grid-layout">
+                </div>
+            <button class="stop-strip-btn" onclick="stopAll()">STOP SONGS</button>
+        </div>
+
+        <div id="view-toy" class="view-section">
+            <div class="grid-layout">
+                <button class="toy-btn active-toy" onclick="playToySweep('rise')">BASS RISE<br><small>25Hz &rarr; 75Hz (7s)</small></button>
+                <button class="toy-btn active-toy" onclick="playToySweep('drop')">BASS DROP<br><small>75Hz &rarr; 25Hz (7s)</small></button>
+                <button class="toy-btn tbd">TBD Audio</button>
+                <button class="toy-btn tbd">TBD Audio</button>
+                <button class="toy-btn tbd">TBD Audio</button>
+                <button class="toy-btn tbd">TBD Audio</button>
+                <button class="toy-btn tbd">TBD</button>
+                <button class="toy-btn tbd">TBD</button>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="global-footer">
+        <button class="master-stop-btn" onclick="stopAll()">STOP ALL AUDIO</button>
+    </footer>
+
+    <script src="songs.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
