@@ -1,9 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Config ---
     const MIN_HZ = 25;
     const MAX_HZ = 75;
 
-    // --- State ---
     let audioCtx = null;
     let activeOsc = null; 
     let activeGain = null;
@@ -15,12 +13,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let uiUpdateRAF = null;
 
     let isFirstAction = true;
+    let hasSweptOnce = false;
     let currentMode = 'generator';
     let genSubMode = 'tone'; 
     let toneHz = 49;
     let isDraggingKnob = false;
 
-    // --- DOM Elements ---
     const headerWrapper = document.getElementById('headerTextWrapper');
     const headerOverlay = document.getElementById('initialHeaderOverlay');
     const headerBase = document.getElementById('headerBase');
@@ -28,8 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const waveCanvas = document.getElementById('waveCanvas');
     const toneArrow = document.getElementById('toneArrow');
 
-    // --- Audio Helpers ---
-    function getCtx() {
+    // Safe Context handling for iOS Safari
+    function getSafeContext() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
@@ -37,56 +35,48 @@ document.addEventListener('DOMContentLoaded', () => {
         return audioCtx;
     }
 
-    // Process First Action Setup
     function handleFirstAction() {
         if (!isFirstAction) return;
         isFirstAction = false;
         headerOverlay.style.display = 'none';
         headerWrapper.style.display = 'flex';
         toneArrow.style.display = 'none';
-        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator");
+        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6d");
     }
 
-    // --- STOP ALL ---
+    // --- GLOBAL STOP ---
     window.stopAll = function() {
         handleFirstAction();
         
-        // 1. Audio
         if (activeOsc) { try { activeOsc.stop(); activeOsc.disconnect(); } catch(e){} activeOsc = null; }
         if (lfoOsc) { try { lfoOsc.stop(); lfoOsc.disconnect(); } catch(e){} lfoOsc = null; }
         if (activeGain) { try { activeGain.disconnect(); } catch(e){} activeGain = null; }
         
-        // 2. Timers
         melodyTimeouts.forEach(t => clearTimeout(t));
         melodyTimeouts = [];
+        
         if (uiUpdateRAF) cancelAnimationFrame(uiUpdateRAF);
         uiUpdateRAF = null;
 
-        // 3. Visuals
         if (vizRAF) cancelAnimationFrame(vizRAF);
         vizRAF = null;
         const c = waveCanvas.getContext('2d');
         c.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
 
-        // 4. UI Reset
+        // Clear UI states
         document.querySelectorAll('.key.active').forEach(k => k.classList.remove('active'));
         document.querySelectorAll('.song-btn.playing').forEach(b => b.classList.remove('playing'));
+        document.body.classList.remove('active-audio');
         
-        // 5. Header Text Reset
-        if (currentMode === 'generator' && genSubMode === 'tone') {
-            updateHeaderUI(toneHz, `Oobleck Dance Generator`);
-        } else {
-            updateHeaderUI(MIN_HZ, "Oobleck Dance Generator");
-        }
+        updateHeaderUI(MIN_HZ, "Oobleck Dance Generator1.6d");
     };
 
-    // --- Visualizer & Header UI ---
+    // --- VISUALIZER ---
     function updateHeaderUI(hz, text = null) {
         if (text) {
             headerBase.textContent = text;
             headerFill.textContent = text;
         }
-        // Visual Fill 25 -> 75hz
         const pct = Math.max(0, Math.min(100, ((hz - MIN_HZ) / (MAX_HZ - MIN_HZ)) * 100));
         headerFill.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
     }
@@ -108,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             analyser.getByteTimeDomainData(dataArray);
             
             ctx.clearRect(0, 0, rect.width, rect.height);
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 4; // Thicker for visibility
             ctx.strokeStyle = '#ff3b30'; 
             ctx.beginPath();
             
@@ -127,28 +117,10 @@ document.addEventListener('DOMContentLoaded', () => {
         draw();
     }
 
-    // Sync header fill dynamically for Sweeps/Toys
-    function trackOscFrequency(overrideText = null) {
-        if (uiUpdateRAF) cancelAnimationFrame(uiUpdateRAF);
-        
-        function track() {
-            if (!activeOsc) return;
-            // For sweeps, activeOsc.frequency.value isn't updated by LFO natively in JS readable form.
-            // We approximate it if needed, or if it's a linearRamp, we CAN read it? Actually WebAudio doesn't expose real-time ramp values well.
-            // But we can approximate based on time, or just let the user see the target.
-            // The prompt says: "act as the frequency visualizer from 25 to 75hz for all audio".
-            // For simplicity, we'll try to update the fill, but note that reading accurate LFO modulation in JS is impossible without a ScriptProcessor.
-            // We will just leave it at base target to prevent lag, except for songs/keys where we explicitly set it.
-        }
-        // track();
-    }
-
-    // --- Generators ---
-
-    // 1. TONE
+    // --- GENERATORS ---
     function startTone(hz) {
         stopAll();
-        const ctx = getCtx();
+        const ctx = getSafeContext();
         activeOsc = ctx.createOscillator();
         activeGain = ctx.createGain();
         analyser = ctx.createAnalyser();
@@ -163,10 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
         startViz();
     }
 
-    // 2. SWEEP
     function startSweep(center, span, duration) {
         stopAll();
-        const ctx = getCtx();
+        const ctx = getSafeContext();
         
         activeOsc = ctx.createOscillator();
         activeGain = ctx.createGain();
@@ -178,8 +149,8 @@ document.addEventListener('DOMContentLoaded', () => {
         activeOsc.frequency.value = center;
         
         lfoOsc.type = 'triangle';
-        lfoOsc.frequency.value = 1 / duration; // 1 cycle per duration slider
-        lfoGain.gain.value = span; // Amplitude of LFO = span size
+        lfoOsc.frequency.value = 1 / duration; 
+        lfoGain.gain.value = span; 
         
         lfoOsc.connect(lfoGain).connect(activeOsc.frequency);
         
@@ -193,27 +164,22 @@ document.addEventListener('DOMContentLoaded', () => {
         startViz();
     }
 
-    // 3. KEYBOARD
     function playKey(freq, noteName) {
         handleFirstAction();
-        // If same key, ignore
-        if (activeOsc && Math.abs(activeOsc.frequency.value - freq) < 0.1) return;
         startTone(freq); 
-        updateHeaderUI(freq, `Note: ${noteName} — ${freq.toFixed(1)}Hz`);
+        updateHeaderUI(freq, `${noteName} — ${freq.toFixed(1)}Hz`);
     }
 
-    // 4. SONGS
     window.playSong = (songId) => {
         stopAll();
         const btn = document.getElementById(`btn-${songId}`);
         if(btn) btn.classList.add('playing');
         
-        const ctx = getCtx();
+        const ctx = getSafeContext();
         const song = SONG_LIBRARY[songId];
         
         const loopSong = async () => {
             if(!btn.classList.contains('playing')) return; 
-            
             for (let note of song.notes) {
                 if(!btn.classList.contains('playing')) return; 
                 
@@ -236,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     activeOsc.start();
                     activeOsc.stop(ctx.currentTime + (note.d/1000));
                     
-                    updateHeaderUI(freq, `Song Note: ${note.n} — ${freq.toFixed(1)}Hz`);
+                    updateHeaderUI(freq, `${note.n} — ${freq.toFixed(1)}Hz`);
                     if(!vizRAF) startViz();
                 } else {
                      if(activeOsc) { try{activeOsc.stop();}catch(e){} activeOsc=null; }
@@ -252,34 +218,27 @@ document.addEventListener('DOMContentLoaded', () => {
         loopSong();
     };
 
-    // 5. TOY SWEEP
-    window.playToySweep = (type) => {
+    window.playToySweep = (start, end) => {
         stopAll();
-        const start = type === 'rise' ? 25 : 75;
-        const end = type === 'rise' ? 75 : 25;
-        
-        const ctx = getCtx();
+        const ctx = getSafeContext();
         analyser = ctx.createAnalyser();
         activeOsc = ctx.createOscillator();
-        activeGain = ctx.createGain();
+        const gain = ctx.createGain();
         
         activeOsc.frequency.setValueAtTime(start, ctx.currentTime);
         activeOsc.frequency.linearRampToValueAtTime(end, ctx.currentTime + 7);
         
-        activeGain.gain.setValueAtTime(0, ctx.currentTime);
-        activeGain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.1);
-        activeGain.gain.setValueAtTime(0.2, ctx.currentTime + 6.9);
-        activeGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 7);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + 6.9);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 7);
         
-        activeOsc.connect(activeGain).connect(analyser).connect(ctx.destination);
+        activeOsc.connect(gain).connect(analyser).connect(ctx.destination);
         activeOsc.start();
         activeOsc.stop(ctx.currentTime + 7);
-        
         document.body.classList.add('active-audio');
-        updateHeaderUI(start, type === 'rise' ? "Bass Rise (25->75Hz)" : "Bass Drop (75->25Hz)");
         startViz();
 
-        // Hack to simulate the header fill during the 7s ramp
         let startTime = Date.now();
         const duration = 7000;
         function animateRampUI() {
@@ -288,38 +247,33 @@ document.addEventListener('DOMContentLoaded', () => {
             if(elapsed > duration) return;
             let pct = elapsed / duration;
             let currentF = start + (end - start) * pct;
-            updateHeaderUI(currentF, type === 'rise' ? "Bass Rise" : "Bass Drop");
+            updateHeaderUI(currentF, start < end ? "Bass Rise" : "Bass Drop");
             uiUpdateRAF = requestAnimationFrame(animateRampUI);
         }
         animateRampUI();
     };
 
-
-    // --- UI Routing ---
+    // --- UI ROUTING ---
     window.setMode = (mode) => {
         stopAll();
         currentMode = mode;
-        
         document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
         document.getElementById(`view-${mode}`).classList.add('active');
-        
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-btn')[['generator','song','toy'].indexOf(mode)].classList.add('active');
+        if(mode === 'generator' && genSubMode === 'tone') toneArrow.style.display = isFirstAction ? 'block' : 'none';
     };
 
     window.setGenSubMode = (sub) => {
         stopAll();
         genSubMode = sub;
-        
         document.querySelectorAll('.gen-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(`btn-${sub}`).classList.add('active');
-        
         document.querySelectorAll('.sub-ui').forEach(u => u.classList.remove('active'));
         document.getElementById(`ui-${sub}`).classList.add('active');
 
-        if (sub === 'tone') {
-            startTone(toneHz); 
-        }
+        if (sub === 'tone' && !isFirstAction) startTone(toneHz); 
+        toneArrow.style.display = 'none'; // Hide arrow once a submode is clicked
     };
 
     // --- TONE KNOB LOGIC ---
@@ -341,7 +295,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const startDrag = (y) => { isDraggingKnob = true; startY = y; initialHz = toneHz; if(genSubMode === 'tone') startTone(toneHz); };
+    const startDrag = (y) => { 
+        handleFirstAction();
+        isDraggingKnob = true; startY = y; initialHz = toneHz; 
+        if(genSubMode === 'tone') startTone(toneHz); 
+    };
     const moveDrag = (y) => { if (!isDraggingKnob) return; const delta = startY - y; updateKnobUI(initialHz + (delta * 0.5)); };
     const endDrag = () => { isDraggingKnob = false; };
 
@@ -353,10 +311,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e.touches[0].clientY); }, {passive: false});
     document.addEventListener('touchend', endDrag);
 
-    // Nudge Buttons
     document.getElementById('nudgeUp').onclick = () => { handleFirstAction(); updateKnobUI(toneHz + 1); if(!activeOsc && genSubMode==='tone') startTone(toneHz);};
     document.getElementById('nudgeDown').onclick = () => { handleFirstAction(); updateKnobUI(toneHz - 1); if(!activeOsc && genSubMode==='tone') startTone(toneHz);};
-
 
     // --- SWEEP LOGIC ---
     const swpCenter = document.getElementById('swpCenter');
@@ -371,24 +327,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const triggerSweep = () => {
         handleFirstAction();
+        hasSweptOnce = true;
         startSweep(parseFloat(swpCenter.value), parseFloat(swpSpan.value), parseFloat(swpTime.value));
     };
 
     [swpCenter, swpSpan, swpTime].forEach(el => {
         el.addEventListener('input', updateSweepLabels);
-        el.addEventListener('change', triggerSweep); // Starts only on release
+        el.addEventListener('change', () => {
+            // Only auto-start on change if they've grabbed it at least once.
+            if (!hasSweptOnce && el === swpCenter) triggerSweep(); 
+            else if (hasSweptOnce) triggerSweep();
+        });
     });
-
 
     // --- KEYBOARD BUILDER ---
     function buildKeys() {
         const wrap = document.getElementById('pianoWrapper');
-        // Centered around D#1 (38.89Hz). 18 keys total.
-        // G0 (24.5) -> C2 (65.4) gives exactly 18 keys.
+        // 18 Keys centered on D#1 (38.89Hz). Range: G0 to C2
         const keys = [
-            {n:'G0', f:24.5, t:'w'}, {n:'G#0', f:25.96, t:'b'}, 
-            {n:'A0', f:27.5, t:'w'}, {n:'A#0', f:29.14, t:'b'}, {n:'B0', f:30.87, t:'w'},
-            {n:'C1', f:32.7, t:'w'}, {n:'C#1', f:34.65, t:'b'}, 
+            {n:'G0', f:24.50, t:'w'}, {n:'G#0', f:25.96, t:'b'}, 
+            {n:'A0', f:27.50, t:'w'}, {n:'A#0', f:29.14, t:'b'}, {n:'B0', f:30.87, t:'w'},
+            {n:'C1', f:32.70, t:'w'}, {n:'C#1', f:34.65, t:'b'}, 
             {n:'D1', f:36.71, t:'w'}, {n:'D#1', f:38.89, t:'b'}, {n:'E1', f:41.20, t:'w'},
             {n:'F1', f:43.65, t:'w'}, {n:'F#1', f:46.25, t:'b'}, 
             {n:'G1', f:49.00, t:'w'}, {n:'G#1', f:51.91, t:'b'}, {n:'A1', f:55.00, t:'w'}, {n:'A#1', f:58.27, t:'b'}, {n:'B1', f:61.74, t:'w'},
@@ -399,13 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
         keys.forEach(k => {
             const el = document.createElement('div');
             el.className = `key key-${k.t === 'w' ? 'white' : 'black'}`;
-            
-            if (k.t === 'w') {
-                el.style.left = `${wCount * 9.09}%`; // 11 white keys
-                wCount++;
-            } else {
-                el.style.left = `${(wCount-1) * 9.09 + 6}%`; 
-            }
+            if (k.t === 'w') { el.style.left = `${wCount * 9.09}%`; wCount++; } 
+            else { el.style.left = `${(wCount-1) * 9.09 + 6}%`; }
 
             const play = (e) => { e.preventDefault(); el.classList.add('active'); playKey(k.f, k.n); };
             const stop = (e) => { e.preventDefault(); el.classList.remove('active'); stopAll(); };
@@ -415,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
             el.addEventListener('mouseleave', stop);
             el.addEventListener('touchstart', play, {passive: false});
             el.addEventListener('touchend', stop);
-
             wrap.appendChild(el);
         });
     }
@@ -424,7 +377,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function buildSongs() {
         const grid = document.getElementById('songGrid');
         if (typeof SONG_LIBRARY === 'undefined') return;
-        
         Object.keys(SONG_LIBRARY).forEach(k => {
             const btn = document.createElement('button');
             btn.className = 'song-btn';
@@ -435,7 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Init
     buildKeys();
     buildSongs();
     updateKnobUI(49);
